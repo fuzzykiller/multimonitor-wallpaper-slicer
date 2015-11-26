@@ -1,15 +1,14 @@
 ﻿using System;
 using System.Runtime.InteropServices;
-using JetBrains.Annotations;
 using Microsoft.Win32;
 
-namespace MultiMonitorWallpaper.Native
+namespace LibScreenInfo
 {
     internal static class NativeMethods
     {
         // ReSharper disable InconsistentNaming
 
-        public static Guid GUID_DEVINTERFACE_MONITOR = new Guid("E6F07B5F-EE97-4a90-B076-33F57BF4EAA7");
+        public static Guid GUID_DEVINTERFACE_MONITOR = new Guid("e6f07b5f-ee97-4a90-b076-33f57bf4eaa7");
         public const int ERROR_NO_MORE_ITEMS = 0x103;
         public const int ERROR_INSUFFICIENT_BUFFER = 0x7a;
         public const int DICS_FLAG_GLOBAL = 0x1;
@@ -69,7 +68,7 @@ namespace MultiMonitorWallpaper.Native
             uint BufferLen,
             uint ulFlags);
 
-        [DllImport("Advapi32.dll", SetLastError = true)]
+        [DllImport("advapi32.dll", SetLastError = true)]
         public static extern int RegQueryValueEx(
             IntPtr hkey,
             string lpValueName,
@@ -78,7 +77,7 @@ namespace MultiMonitorWallpaper.Native
             IntPtr lpData,
             ref uint lpcbData);
 
-        [DllImport("Advapi32.dll", SetLastError = true)]
+        [DllImport("advapi32.dll", SetLastError = true)]
         public static extern int RegCloseKey(
             IntPtr hkey);
 
@@ -116,14 +115,10 @@ namespace MultiMonitorWallpaper.Native
             private IntPtr Reserved;
         }
 
-        [UsedImplicitly]
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto, Pack = 1)]
         private struct SP_DEVICE_INTERFACE_DETAIL_DATA
         {
-            [UsedImplicitly]
             public uint cbSize;
-
-            [UsedImplicitly]
             public char devicePath;
         }
 
@@ -133,7 +128,9 @@ namespace MultiMonitorWallpaper.Native
             [MarshalAs(UnmanagedType.U4)]
             public int cb;
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+
             public string DeviceName;
+
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
             public string DeviceString;
             [MarshalAs(UnmanagedType.U4)]

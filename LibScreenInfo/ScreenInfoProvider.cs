@@ -4,16 +4,19 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using LibScreenInfo.Properties;
 using Microsoft.Win32;
 
-namespace MultiMonitorWallpaper.Native
+namespace LibScreenInfo
 {
     public static class ScreenInfoProvider
     {
-        public static IEnumerable<ScreenInfo> GetScreens()
+        public static IEnumerable<ScreenInfo> GetScreenInfo()
         {
             var setupApiData = GetSetupApiData()
                 .ToDictionary(x => x.DevicePath, StringComparer.InvariantCultureIgnoreCase);
+
+            var screenInfos = new List<ScreenInfo>();
 
             // We assume screen count hasn't changed in the meantime ;)
             var screenCount = setupApiData.Count;
@@ -24,33 +27,34 @@ namespace MultiMonitorWallpaper.Native
             {
                 if (!NativeMethods.EnumDisplayDevices(null, i, ref displayDevice, 0))
                 {
-                    throw new IndexOutOfRangeException("Screen vanished while enumerating");
+                    throw new IndexOutOfRangeException(Resources.ScreenVanished);
                 }
 
                 if (
                     !NativeMethods.EnumDisplayDevices(
                         displayDevice.DeviceName, 0, ref displayDevice, NativeMethods.EDD_GET_DEVICE_INTERFACE_NAME))
                 {
-                    throw new IndexOutOfRangeException("Screen vanished while enumerating");
+                    throw new IndexOutOfRangeException(Resources.ScreenVanished);
                 }
 
-                var screenInfo = setupApiData[displayDevice.DeviceID];
-                screenInfo.FriendlyName = displayDevice.DeviceString;
+                var partialScreenInfo = setupApiData[displayDevice.DeviceID];
 
                 // Format: \\.\DISPLAY0\Monitor0
                 var gdiDeviceName = displayDevice.DeviceName;
 
                 // Format: \\.\DISPLAY0
                 var managedScreenInfo = Screen.AllScreens.Single(x => gdiDeviceName.StartsWith(x.DeviceName));
-                screenInfo.ManagedInfo = managedScreenInfo;
+
+                var screenInfo = new ScreenInfo(partialScreenInfo, displayDevice.DeviceString, managedScreenInfo);
+                screenInfos.Add(screenInfo);
             }
 
-            return setupApiData.Values;
+            return screenInfos;
         }
 
-        private static IEnumerable<ScreenInfo> GetSetupApiData()
+        private static IEnumerable<PartialScreenInfo> GetSetupApiData()
         {
-            var screens = new List<ScreenInfo>();
+            var screenInfos = new List<PartialScreenInfo>();
             var monitorGuid = NativeMethods.GUID_DEVINTERFACE_MONITOR;
 
             var devInfoSetHandle = IntPtr.Zero;
@@ -85,14 +89,12 @@ namespace MultiMonitorWallpaper.Native
                     }
 
                     var deviceInterfaceDetail = GetDeviceInterfaceDetail(devInfoSetHandle, ref deviceInterfaceData);
-                    var screenInfo = new ScreenInfo
-                        {
-                            DevicePath = deviceInterfaceDetail.DevicePath,
-                            InstanceId = GetDeviceInstanceId(deviceInterfaceDetail.DevinfoData.DevInst),
-                            EDID = GetMonitorEDID(devInfoSetHandle, deviceInterfaceDetail.DevinfoData)
-                        };
+                    var screenInfo = new PartialScreenInfo(
+                        deviceInterfaceDetail.DevicePath,
+                        GetDeviceInstanceId(deviceInterfaceDetail.DevinfoData.DevInst),
+                        GetMonitorEDID(devInfoSetHandle, deviceInterfaceDetail.DevinfoData));
 
-                    screens.Add(screenInfo);
+                    screenInfos.Add(screenInfo);
 
                     i++;
                 }
@@ -105,7 +107,7 @@ namespace MultiMonitorWallpaper.Native
                 }
             }
 
-            return screens;
+            return screenInfos;
         }
 
         private static DeviceInterfaceDetail GetDeviceInterfaceDetail(IntPtr devInfoSetHandle, ref NativeMethods.SP_DEVICE_INTERFACE_DATA deviceInterfaceData)
@@ -170,26 +172,25 @@ namespace MultiMonitorWallpaper.Native
             var result = NativeMethods.CM_Get_Device_ID_Size(out requiredSize, devInst, 0);
             if (result != 0)
             {
-                throw new Win32Exception(string.Format("Error 0x{0:X8} in CM_Get_Device_ID_Size", result));
+                throw new Win32Exception(string.Format(Resources.HexErrorIn, result, @"CM_Get_Device_ID_Size"));
             }
 
-            var buffer = Marshal.AllocHGlobal((int)(requiredSize + 2));
-            string deviceInstanceId;
+            // Make room for terminating NULL
+            requiredSize++;
 
-            try
-            {
-                result = NativeMethods.CM_Get_Device_ID(devInst, buffer, requiredSize + 2, 0);
-                if (result != 0)
-                {
-                    throw new Win32Exception(string.Format("Error 0x{0:X8} in CM_Get_Device_ID", result));
-                }
+            // Required size is in characters!!
+            var bufferSize = (int)requiredSize * Marshal.SystemDefaultCharSize;
+            var buffer = Marshal.AllocHGlobal(bufferSize);
 
-                deviceInstanceId = Marshal.PtrToStringAuto(buffer);
-            }
-            finally
+            result = NativeMethods.CM_Get_Device_ID(devInst, buffer, requiredSize, 0);
+            if (result != 0)
             {
                 Marshal.FreeHGlobal(buffer);
+                throw new Win32Exception(string.Format(Resources.HexErrorIn, result, @"CM_Get_Device_ID"));
             }
+
+            var deviceInstanceId = Marshal.PtrToStringAuto(buffer);
+            Marshal.FreeHGlobal(buffer);
 
             return deviceInstanceId;
         }
@@ -215,12 +216,12 @@ namespace MultiMonitorWallpaper.Native
             {
                 var regKeyType = RegistryValueKind.Binary;
                 uint length = 256;
-                var result = NativeMethods.RegQueryValueEx(deviceRegistryKey, "EDID", IntPtr.Zero, ref regKeyType, ptrBuff, ref length);
+                var result = NativeMethods.RegQueryValueEx(deviceRegistryKey, @"EDID", IntPtr.Zero, ref regKeyType, ptrBuff, ref length);
                 if (result != 0)
                 {
                     throw new Win32Exception(result);
                 }
-                
+
                 Marshal.Copy(ptrBuff, edidBlock, 0, 256);
             }
             finally
@@ -232,8 +233,24 @@ namespace MultiMonitorWallpaper.Native
                     throw new Win32Exception(result);
                 }
             }
-            
+
             return edidBlock;
+        }
+
+        internal class PartialScreenInfo
+        {
+            public PartialScreenInfo(string devicePath, string instanceId, byte[] edid)
+            {
+                this.DevicePath = devicePath;
+                this.InstanceId = instanceId;
+                this.EDID = edid;
+            }
+
+            public string InstanceId { get; private set; }
+
+            public byte[] EDID { get; private set; }
+
+            public string DevicePath { get; private set; }
         }
     }
 }

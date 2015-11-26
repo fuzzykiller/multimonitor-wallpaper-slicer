@@ -1,6 +1,4 @@
-﻿using MultiMonitorWallpaper.Native;
-
-namespace MultiMonitorWallpaper
+﻿namespace LibScreenInfo
 {
     internal class DeviceInterfaceDetail
     {

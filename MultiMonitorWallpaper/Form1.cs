@@ -1,22 +1,15 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Microsoft.Win32.SafeHandles;
-using MultiMonitorWallpaper.Native;
 
 namespace MultiMonitorWallpaper
 {
     public partial class Form1 : Form
     {
         private readonly ManualResetEvent redrawMutex = new ManualResetEvent(true);
-        private IEnumerable<ScreenInfo> info;
 
         public Form1()
         {
@@ -24,11 +17,6 @@ namespace MultiMonitorWallpaper
 
             this.pictureBox1.SizeChanged += this.VisualizeScreenConfiguration;
             this.Load += this.VisualizeScreenConfiguration;
-
-            this.Load += (sender, args) =>
-                {
-                    this.info = ScreenInfoProvider.GetScreens();
-                };
         }
 
         private async void VisualizeScreenConfiguration(object sender, EventArgs eventArgs)
@@ -47,7 +35,7 @@ namespace MultiMonitorWallpaper
             var thickRedPen = new Pen(Color.Red, 2);
             var textPen = Brushes.Red;
             var textFont = new Font(FontFamily.GenericSansSerif, 12);
-            var textFormat = new StringFormat()
+            var textFormat = new StringFormat
                 {
                     Alignment = StringAlignment.Center,
                     LineAlignment = StringAlignment.Center
